@@ -1,4 +1,4 @@
-﻿#pragma comment(lib, "ws2_32.lib")
+#pragma comment(lib, "ws2_32.lib")
 #include <winsock2.h>
 #include <iostream>
 #include <string>
@@ -31,7 +31,7 @@ int inputCorrectBase(std::string text)
     return polynom_degree;
 }
 
-bool continueCheck()
+int continueCheck()
 /*
 Функция ждет ввод пользователя.
 Если пользователь вводит Y или y, функция возвращает 1.
@@ -41,20 +41,24 @@ bool continueCheck()
 {
     bool flag = true;
     char symbol;
-    std::cout << "Хотите продолжить(Y/y) или преостановить(N/n) программу?" << '\n';
+    std::cout << "Хотите продолжить(Y/y) или преостановить(N/n) или отключить (S/s) программу ?" << '\n';
     while (!(std::cin >> symbol) || flag)
     {
         std::cin.clear();
         if ((symbol == 'N' || symbol == 'n') && (std::cin.peek() == '\n'))
         {
-            return false;
+            return 0;
         }
         else if ((symbol == 'Y' || symbol == 'y') && (std::cin.peek() == '\n'))
         {
-            return true;
+            return 1;
+        }
+        else if ((symbol == 'S' || symbol == 's') && (std::cin.peek() == '\n'))
+        {
+            return 2;
         }
         while (std::cin.get() != '\n');
-        std::cout << "Ошибка :c Для работы доступны только продолжение (Y/y) и прекращение (N/n) работы.";
+        std::cout << "Ошибка :c Для работы доступны только продолжение (Y/y) прекращение (N/n) и (S/s) отключение программы." << std::endl;
     }
 }
 
@@ -106,17 +110,17 @@ DWORD WINAPI ClientThread(LPVOID lpParam)
 
         memset(serverResponse, 0, 1024);
 
-        bool continueFlag = continueCheck();
+        int continueFlag = continueCheck();
         if (send(clientSocket, (char*)&continueFlag, sizeof(continueFlag), 0) == SOCKET_ERROR)
         {
             std::cout << "Ошибка при отправке данных" << std::endl;
             break;
         }
-        if (continueFlag)
+        if (continueFlag == 1)
         {
             std::cout << "Продолжаю работу" << std::endl;
         }
-        else {
+        else if(continueFlag == 0) {
             std::cout << "Приостанавливаю свою работу" << std::endl;
             DWORD dwWaitResult = WaitForSingleObject(pool[1], INFINITE);
             switch (dwWaitResult) {
@@ -138,6 +142,11 @@ DWORD WINAPI ClientThread(LPVOID lpParam)
             }
             std::cout << "Приостановка работы завершена" << std::endl;
         }
+		else if (continueFlag == 2)
+		{
+			std::cout << "Прекращаю свою работу." << std::endl;
+			is_iterated = false;
+		}
     }
 
     return 0;
