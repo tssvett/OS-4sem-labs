@@ -1,4 +1,4 @@
-﻿#define _CRT_SECURE_NO_WARNINGS
+#define _CRT_SECURE_NO_WARNINGS
 #include <iostream>
 #include <WinSock2.h>
 #include <windows.h>
@@ -11,6 +11,7 @@
 std::vector<SOCKET> Sockets; //вектор для сокетов
 std::vector<bool> Sockets_is_sleep;
 int n;
+bool is_delete = false;
 HANDLE hSemaphore;
 HANDLE pool[2] = {
         CreateEvent(NULL, FALSE, FALSE, L"availible"),
@@ -63,7 +64,7 @@ std::string getResult(int num, int base) {
 DWORD WINAPI ServerThread(int current_socket)
 {
     WaitForSingleObject(hSemaphore, INFINITY);
-    bool continueFlag = true;
+    int continueFlag = 1;
     SOCKET lastConnectedSocket = Sockets[current_socket];
     while (continueFlag) {
         // Получение числа и системы счисления от клиента
@@ -82,7 +83,7 @@ DWORD WINAPI ServerThread(int current_socket)
         }
 
         // Преобразование числа в другую систему счисления
-        std::cout << "Преобразуем " << num << " в " << base <<"ичную систему счисления" << std::endl;
+        std::cout << "Преобразуем " << num << " в " << base << "ичную систему счисления" << std::endl;
         std::string result = getResult(num, base);
         std::cout << "Результат: " << result << std::endl;
 
@@ -97,10 +98,27 @@ DWORD WINAPI ServerThread(int current_socket)
             std::cout << "Ошибка при получении данных" << std::endl;
             exit(1);
         }
+        if (continueFlag == 2) {
+            break;
+        }
     }
-
-    std::cout << "Клиент " << lastConnectedSocket << " приостановил свою работу" << std::endl;
-    Sockets_is_sleep[current_socket] = 1;
+    if (continueFlag == 2) {
+        std::cout << "Номер current_socket перед удалением " << current_socket << std::endl;
+        closesocket(Sockets[current_socket]);
+        std::cout << "Клиент отключился." << std::endl;
+        std::cout << Sockets.size() << std::endl;
+        Sockets.erase(Sockets.begin() + current_socket);
+        std::cout << Sockets.size() << std::endl;
+        std::cout << Sockets_is_sleep.size() << std::endl;
+        Sockets_is_sleep.erase(Sockets_is_sleep.begin() + current_socket);
+        std::cout << Sockets_is_sleep.size() << std::endl;
+        is_delete = true;
+    }
+    else
+    {    
+        std::cout << "Клиент " << lastConnectedSocket << " приостановил свою работу" << std::endl;
+        Sockets_is_sleep[current_socket] = 1;
+    }
     std::cout << "Отправляю сигнал семафору о освобождении" << std::endl;
     ReleaseSemaphore(hSemaphore, 1, NULL);
 }
@@ -138,7 +156,7 @@ int inputCorrectInteger(std::string text)
     std::cout << text << std::endl;
 	int leftBorder = 1;
     int rightBorder = 5;
-    while (!(std::cin >> polynom_degree) || (std::cin.peek() != '\n') || (polynom_degree < leftBorder && polynom_degree > rightBorder)) {
+    while (!(std::cin >> polynom_degree) || (std::cin.peek() != '\n') || (polynom_degree < leftBorder || polynom_degree > rightBorder)) {
         std::cin.clear();
         while (std::cin.get() != '\n');
         std::cout << "Ошибка :c Введите корректное целое число..." << '\n';
@@ -190,7 +208,7 @@ int main()
 
 
     // Создание семафора и события
-    hSemaphore = CreateSemaphore(NULL, n, n, L"semaphore");
+    hSemaphore = CreateSemaphore(NULL, 1, n, L"semaphore");
 
     for (int i = 0; i < n; i++) {
         start_client();
@@ -199,8 +217,11 @@ int main()
 
     int current_socket = 0;
     SOCKET lastConnectedSocket;
-    while (true) {
-        if (Sockets.size() < n) {
+    bool flag = true;
+    int iteration = 0;
+    while (flag) {
+        if (iteration < n) {
+            std::cout << "Жду подключений" << std::endl;
             Sockets.push_back(accept(serverSocket, (SOCKADDR*)&serverAddr, &serverSize));
             Sockets_is_sleep.push_back(0);
             if (Sockets[Sockets.size() - 1] == INVALID_SOCKET)
@@ -212,12 +233,19 @@ int main()
             }
             std::cout << "Клиент " << Sockets[Sockets.size() - 1] << " подключился успешно!" << std::endl;
         }
+        else {
+            current_socket=0;
+        }
+        if (Sockets.size() == 0) {
+            flag = false;
+            break;
+        }
         if (Sockets_is_sleep[current_socket] == 1) {
             std::cout << "Снимаю приостановку с клиента " << Sockets[current_socket] << std::endl;
             SetEvent(pool[1]);
         }
         std::cout << "Номер сокета, с которым мы будем работать: " << Sockets[current_socket] << std::endl;
-
+ 
         lastConnectedSocket = Sockets[current_socket];
      
         // Создание потока сервера
@@ -230,16 +258,27 @@ int main()
         DWORD dwWaitResult =  WaitForSingleObject(hThread, INFINITE);
 
         CloseHandle(hThread);
-        current_socket++;
+        if (!is_delete) {
+            current_socket++;
+        }
         if (current_socket == n) {
             current_socket = 0;
+        }
+        
+        is_delete = false;
+        iteration++;
+        if (Sockets.size() == 0 && iteration == n) {
+            flag = false;
         }
         std::cout << "==================================================================================" << std::endl;
 
     }
+    std::cout << "Корректное завершение работы, верьте мне" << std::endl;
     // Освобождение ресурсов
     CloseHandle(hSemaphore);
-    CloseHandle(pool);
+    for (int i = 0; i < 2; i++) {
+        CloseHandle(pool[i]);
+    }
     closesocket(serverSocket);
     WSACleanup();
 
